@@ -1,0 +1,11 @@
+{
+  "name": "chronolens-userscript",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-first date and calendar intelligence userscript",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test",
+    "check": "node scripts/check.mjs"
+  }
+}
