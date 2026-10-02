@@ -15,6 +15,9 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        GM.getValue
+// @grant        GM.setValue
+// @grant        GM.registerMenuCommand
 // ==/UserScript==
 
 /* ChronoLens is deliberately self-contained and readable for Greasy Fork review. */
@@ -248,7 +251,9 @@
 
   function defaultSettings() { return JSON.parse(JSON.stringify(DEFAULTS)); }
   function settingsStore() {
-    const gmGet = typeof GM_getValue === 'function' ? GM_getValue : null; const gmSet = typeof GM_setValue === 'function' ? GM_setValue : null;
+    const modernGM = typeof GM === 'object' && GM ? GM : null;
+    const gmGet = typeof GM_getValue === 'function' ? GM_getValue : modernGM && typeof modernGM.getValue === 'function' ? modernGM.getValue.bind(modernGM) : null;
+    const gmSet = typeof GM_setValue === 'function' ? GM_setValue : modernGM && typeof modernGM.setValue === 'function' ? modernGM.setValue.bind(modernGM) : null;
     return {
       async get() {
         try { const value = gmGet ? gmGet('chronolens.settings', null) : null; const saved = value && typeof value.then === 'function' ? await value : value; return { ...defaultSettings(), ...(saved && typeof saved === 'object' ? saved : {}) }; }
@@ -263,7 +268,7 @@
 
   function startBrowserUI() {
     if (!scope.document || !scope.document.documentElement || scope.document.getElementById('chronolens-host')) return;
-    const doc = scope.document; const store = settingsStore(); let settings = defaultSettings(); let activeTab = 'Inspect'; let currentResult = null; let currentInput = ''; let scanResults = []; let currentCalendar = null; let currentIcs = '';
+    const doc = scope.document; const store = settingsStore(); let settings = defaultSettings(); let activeTab = 'Inspect'; let currentResult = null; let currentInput = ''; let scanResults = []; let currentCalendar = null; let currentIcs = ''; let previousFocus = null;
     const host = doc.createElement('div'); host.id = 'chronolens-host'; host.style.cssText = 'all:initial;position:fixed;z-index:2147483646;inset:0 auto auto 0;'; doc.documentElement.appendChild(host);
     const shadow = host.attachShadow({ mode: 'open' });
     const style = doc.createElement('style');
@@ -279,8 +284,8 @@
     function card(parent, title, value) { const c = el('div', undefined, 'cl-card'); c.append(el('b', title), el('div', String(value), 'cl-value')); parent.append(c); }
     function h2(parent, title, description) { parent.append(el('h2', title, 'cl-title')); if (description) parent.append(el('p', description, 'cl-hint')); }
     function applyTheme() { shell.dataset.theme = settings.theme === 'system' ? 'theme' : settings.theme; }
-    function openPanel(value = '') { shell.classList.add('open'); bubble.classList.remove('visible'); const field = shadow.querySelector('[data-input="inspect"]'); if (field && value) field.value = value; if (value) { currentInput = value; activeTab = 'Inspect'; render(); } else render(); shell.focus(); }
-    function closePanel() { shell.classList.remove('open'); bubble.classList.remove('visible'); }
+    function openPanel(value = '') { if (!shell.classList.contains('open')) previousFocus = shadow.activeElement || doc.activeElement; shell.classList.add('open'); bubble.classList.remove('visible'); if (value) { currentInput = value; activeTab = 'Inspect'; } render(); shell.focus(); }
+    function closePanel() { shell.classList.remove('open'); bubble.classList.remove('visible'); if (previousFocus && previousFocus.isConnected && typeof previousFocus.focus === 'function') previousFocus.focus(); previousFocus = null; }
     function addCopy(parent, text, label = 'Copy') { parent.append(btn(label, async () => { try { await navigator.clipboard.writeText(text); } catch { const area = doc.createElement('textarea'); area.value = text; shadow.append(area); area.select(); doc.execCommand('copy'); area.remove(); } })); }
     function renderHeader() {
       const head = el('header', undefined, 'cl-head'); head.append(el('div', 'ChronoLens', 'cl-brand'), el('div', 'Inspect, convert and understand dates without leaving the page.', 'cl-tag'));
@@ -292,7 +297,7 @@
     }
     function renderInspect(body) {
       h2(body, 'Inspect a date or instant', 'Date-only values stay civil dates. A time without an offset is a local wall time, not a unique instant.');
-      const row = el('div', undefined, 'cl-row'); const f = el('input', undefined, 'cl-input'); f.type = 'text'; f.placeholder = '2027-01-01 · 2027-01-01T14:30:00Z · 03/04/2027'; f.value = currentInput; f.dataset.input = 'inspect'; f.setAttribute('aria-label', 'Date, date-time, or Unix timestamp'); f.style.flex = '1'; const go = btn('Inspect', () => { currentInput = f.value; render(); }, true); row.append(f, go); body.append(row);
+      const row = el('div', undefined, 'cl-row'); const f = el('input', undefined, 'cl-input'); f.type = 'text'; f.placeholder = '2027-01-01 · 2027-01-01T14:30:00Z · 03/04/2027'; f.value = currentInput; f.dataset.input = 'inspect'; f.setAttribute('aria-label', 'Date, date-time, or Unix timestamp'); f.style.flex = '1'; const inspect = () => { currentInput = f.value; render(); }; f.addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); inspect(); } }); const go = btn('Inspect', inspect, true); row.append(f, go); body.append(row);
       const selected = getSelectionText(); if (!currentInput && selected) { const hint = el('div', `Selected text: ${selected.slice(0, 140)}`, 'cl-hint'); body.append(hint, btn('Use selection', () => { currentInput = selected; render(); })); }
       if (!currentInput) { body.append(el('p', 'Enter a date manually, select date-like text on the page, or use Alt + Shift + D.', 'cl-hint')); return; }
       currentResult = parseInput(currentInput, settings);
@@ -370,7 +375,7 @@
     }
     function render() { applyTheme(); shell.replaceChildren(); shell.append(style); renderHeader(); const body = el('main', undefined, 'cl-body'); body.setAttribute('role', 'tabpanel'); shell.append(body); const renders = { Inspect: renderInspect, Calculate: renderCalculate, 'Time Zones': renderTimeZones, Calendar: renderCalendar, ICS: renderIcs, 'Page Dates': renderPageDates, Settings: renderSettings, About: renderAbout }; renders[activeTab](body); }
     function getSelectionText() { try { return String(scope.getSelection && scope.getSelection()).trim(); } catch { return ''; } }
-    async function setup() { settings = await store.get(); applyTheme(); const menu = typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : null; if (menu) menu('Open ChronoLens', () => openPanel(getSelectionText())); }
+    async function setup() { settings = await store.get(); applyTheme(); const modernMenu = typeof GM === 'object' && GM && typeof GM.registerMenuCommand === 'function' ? GM.registerMenuCommand.bind(GM) : null; const menu = typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : modernMenu; if (menu) menu('Open ChronoLens', () => openPanel(getSelectionText())); }
     doc.addEventListener('keydown', event => { if (event.altKey && event.shiftKey && event.key.toLowerCase() === 'd') { event.preventDefault(); openPanel(getSelectionText()); } else if (event.key === 'Escape' && shell.classList.contains('open')) closePanel(); }, true);
     doc.addEventListener('mouseup', event => {
       if (!settings.selectionBubble || shell.classList.contains('open')) return;
