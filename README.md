@@ -17,7 +17,7 @@ ChronoLens is a local-first userscript for inspecting dates and instants, compar
 
 ## Installation and use
 
-Install the published script from Greasy Fork once its public listing is available. In a supported userscript manager, open ChronoLens from its menu or press **Alt + Shift + D**. Select the optional selection bubble in Settings to enable it; it is off by default. Manual input is always available.
+Install [ChronoLens from Greasy Fork](https://greasyfork.org/en/scripts/598402-chronolens-date-calendar-intelligence-toolkit). In a supported userscript manager, open ChronoLens from its menu or press **Alt + Shift + D**. Select the optional selection bubble in Settings to enable it; it is off by default. Manual input is always available.
 
 ## Date semantics
 
