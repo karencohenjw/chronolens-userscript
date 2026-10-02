@@ -127,6 +127,12 @@ test('page scanner is on-demand and bounded', async t => {
     const doc = { defaultView: { getComputedStyle: () => ({ display: 'block', visibility: 'visible' }) }, createTreeWalker: () => ({ nextNode: (() => { let once = false; return () => once ? null : (once = true, node); })() }) };
     assert.deepEqual(c.scanPage({ ownerDocument: doc }), []);
   });
+  await t.test('hidden ancestors are skipped', () => {
+    const hidden = { parentElement: null }; const parent = { parentElement: hidden, closest: () => null };
+    const node = { nodeValue: '2027-01-01', parentElement: parent }; const root = { ownerDocument: null };
+    const doc = { defaultView: { getComputedStyle: element => element === hidden ? { display: 'none', visibility: 'visible' } : { display: 'block', visibility: 'visible' } }, createTreeWalker: () => ({ nextNode: (() => { let once = false; return () => once ? null : (once = true, node); })() }) }; root.ownerDocument = doc;
+    assert.deepEqual(c.scanPage(root), []);
+  });
 });
 
 test('additional civil arithmetic edge cases', async t => {
